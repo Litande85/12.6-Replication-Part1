@@ -40,10 +40,9 @@
 1) master - makhota-vm20 10.128.0.20
 2) slave - makhota-vm21 10.128.0.21
 
-Устанавливаем MySql на обе ноды
+Устанавливаем MySql на обе ноды [mysql_alma.sh](mysql_alma.sh)
 
 ```bash
-#!/bin/bash
 # Установка MySql
 sudo dnf update -y
 sudo dnf install mysql mysql-server -y
@@ -60,18 +59,12 @@ sudo chown -R mysql: /var/log/mysql
 #server-id=1  - для мастера
 #server-id=2  - для slave
 
-sudo tee --append /etc/new_my.cnf  <<-EOF
-[client-server]
-
+sudo tee -a /etc/my.cnf.d/mysql-server.cnf  <<-EOF
 bind-address=0.0.0.0
-server-id=1 
+server-id=1
 log_bin=/var/log/mysql/mybin.log
 
-log-error=/var/log/mysqld.log
-pid-file=/var/run/mysqld/mysqld.pid
 EOF
-cat /etc/my.cnf | sudo tee --append /etc/new_my.cnf
-sudo mv /etc/new_my.cnf /etc/my.cnf 
 
 #Включаем MySql
 sudo systemctl start mysqld
