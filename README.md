@@ -36,6 +36,168 @@
 
 ### *<a name="2">Ответ к Заданию 2</a>*
 
+Создано две ноды `almalinux-9`:
+1) master - makhota-vm20 10.128.0.20
+2) slave - makhota-vm21 10.128.0.21
+
+Устанавливаем MySql на обе ноды
+
+```bash
+#!/bin/bash
+# Установка MySql
+sudo dnf update -y
+sudo dnf install mysql mysql-server -y
+
+#Создаем дирректорию для логов
+sudo mkdir -p /var/log/mysql
+
+#Инициализируем базу и даем права mysql
+sudo mysqld --initialize
+sudo chown -R mysql: /var/lib/mysql
+sudo chown -R mysql: /var/log/mysql
+
+#Вносим исправления в конфигурационный файл
+#server-id=1  - для мастера
+#server-id=2  - для slave
+
+sudo tee --append /etc/new_my.cnf  <<-EOF
+[client-server]
+
+bind-address=0.0.0.0
+server-id=1 
+log_bin=/var/log/mysql/mybin.log
+
+log-error=/var/log/mysqld.log
+pid-file=/var/run/mysqld/mysqld.pid
+EOF
+cat /etc/my.cnf | sudo tee --append /etc/new_my.cnf
+sudo mv /etc/new_my.cnf /etc/my.cnf 
+
+#Включаем MySql
+sudo systemctl start mysqld
+sudo systemctl enable mysqld
+```
+
+![status](img/img%202023-03-18%20224648.png)
+
+Смотрим предустановленный пароль для `root@localhost`.
+
+```bash
+sudo cat /var/log/mysql/mysqld.log
+```
+![pass](img/img%202023-03-18%20225002.png)
+
+Заходим в базу и меняем пароль, ставим одинаковый в обе ноды
+
+```bash
+sudo mysql -p
+```
+
+```sql
+ALTER USER 'root'@'localhost' IDENTIFIED BY '11111';
+FLUSH PRIVILEGES;
+```
+
+Создаем пользователя для репликации на обеих нодах
+
+```sql
+CREATE USER 'replication'@'%' IDENTIFIED WITH mysql_native_password BY '22222';
+GRANT REPLICATION SLAVE ON *.* TO 'replication'@'%';
+```
+
+![replication](img/img%202023-03-18%20225408.png)
+
+На мастере
+
+```sql
+SHOW MASTER STATUS;
+```
+
+На slave 
+
+```sql
+CHANGE MASTER TO MASTER_HOST='10.128.0.20', MASTER_USER='replication', MASTER_PASSWORD='22222', MASTER_LOG_FILE = 'mybin.000001', MASTER_LOG_POS = 1160;
+START SLAVE;
+SHOW SLAVE STATUS\G;
+```
+
+![slave](img/img%202023-03-18%20225923.png)
+
+```sql
+
+mysql> SHOW SLAVE STATUS\G;
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for source to send event
+                  Master_Host: 10.128.0.20
+                  Master_User: replication
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: mybin.000001
+          Read_Master_Log_Pos: 1160
+               Relay_Log_File: makhota-vm21-relay-bin.000002
+                Relay_Log_Pos: 322
+        Relay_Master_Log_File: mybin.000001
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 1160
+              Relay_Log_Space: 539
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 1
+                  Master_UUID: 6a789412-c5c2-11ed-b97b-d00d12a003a1
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State: Replica has read all relay log; waiting for more updates
+           Master_Retry_Count: 86400
+                  Master_Bind: 
+      Last_IO_Error_Timestamp: 
+     Last_SQL_Error_Timestamp: 
+               Master_SSL_Crl: 
+           Master_SSL_Crlpath: 
+           Retrieved_Gtid_Set: 
+            Executed_Gtid_Set: 
+                Auto_Position: 0
+         Replicate_Rewrite_DB: 
+                 Channel_Name: 
+           Master_TLS_Version: 
+       Master_public_key_path: 
+        Get_master_public_key: 0
+            Network_Namespace: 
+1 row in set, 1 warning (0.00 sec)
+
+ERROR: 
+No query specified
+```
+
+![conf](img/img%202023-03-18%20230827.png)
+
+
+![test](img/img%202023-03-18%20231802.png)
+
 
 ---
 
@@ -54,3 +216,83 @@
 ### *<a name="3">Ответ к Заданию 3*</a>*
 
 
+На мастере
+
+```sql
+CHANGE MASTER TO MASTER_HOST='10.128.0.21', MASTER_USER='replication', MASTER_PASSWORD='22222', MASTER_LOG_FILE = 'mybin.000001', MASTER_LOG_POS = 1163;
+START SLAVE;
+SHOW SLAVE STATUS\G;
+```
+
+![add master2](img/img%202023-03-19%20001907.png)
+
+```sql
+mysql> SHOW SLAVE STATUS\G;
+*************************** 1. row ***************************
+               Slave_IO_State: Waiting for source to send event
+                  Master_Host: 10.128.0.21
+                  Master_User: replication
+                  Master_Port: 3306
+                Connect_Retry: 60
+              Master_Log_File: mybin.000001
+          Read_Master_Log_Pos: 1163
+               Relay_Log_File: makhota-vm20-relay-bin.000002
+                Relay_Log_Pos: 322
+        Relay_Master_Log_File: mybin.000001
+             Slave_IO_Running: Yes
+            Slave_SQL_Running: Yes
+              Replicate_Do_DB: 
+          Replicate_Ignore_DB: 
+           Replicate_Do_Table: 
+       Replicate_Ignore_Table: 
+      Replicate_Wild_Do_Table: 
+  Replicate_Wild_Ignore_Table: 
+                   Last_Errno: 0
+                   Last_Error: 
+                 Skip_Counter: 0
+          Exec_Master_Log_Pos: 1163
+              Relay_Log_Space: 539
+              Until_Condition: None
+               Until_Log_File: 
+                Until_Log_Pos: 0
+           Master_SSL_Allowed: No
+           Master_SSL_CA_File: 
+           Master_SSL_CA_Path: 
+              Master_SSL_Cert: 
+            Master_SSL_Cipher: 
+               Master_SSL_Key: 
+        Seconds_Behind_Master: 0
+Master_SSL_Verify_Server_Cert: No
+                Last_IO_Errno: 0
+                Last_IO_Error: 
+               Last_SQL_Errno: 0
+               Last_SQL_Error: 
+  Replicate_Ignore_Server_Ids: 
+             Master_Server_Id: 2
+                  Master_UUID: fd711c4f-c5d0-11ed-9ed5-d00d64279f8d
+             Master_Info_File: mysql.slave_master_info
+                    SQL_Delay: 0
+          SQL_Remaining_Delay: NULL
+      Slave_SQL_Running_State: Replica has read all relay log; waiting for more updates
+           Master_Retry_Count: 86400
+                  Master_Bind: 
+      Last_IO_Error_Timestamp: 
+     Last_SQL_Error_Timestamp: 
+               Master_SSL_Crl: 
+           Master_SSL_Crlpath: 
+           Retrieved_Gtid_Set: 
+            Executed_Gtid_Set: 
+                Auto_Position: 0
+         Replicate_Rewrite_DB: 
+                 Channel_Name: 
+           Master_TLS_Version: 
+       Master_public_key_path: 
+        Get_master_public_key: 0
+            Network_Namespace: 
+1 row in set, 1 warning (0.01 sec)
+
+ERROR: 
+No query specified
+```
+
+![test2](img/img%202023-03-19%20002232.png)
