@@ -186,8 +186,11 @@ ERROR:
 No query specified
 ```
 
+Файлы конфигурации
+
 ![conf](img/img%202023-03-18%20230827.png)
 
+Тесты 
 
 ![test](img/img%202023-03-18%20231802.png)
 
